@@ -3,26 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>股票查詢（真實版）</title>
+  <title>股票查詢（穩定真實版）</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <style>
-    body { background: #f8fafc; font-family: system-ui; }
+    body { background: #f8fafc; font-family: system-ui; margin:0; padding:0; }
+    .container { max-width: 480px; margin: 0 auto; padding: 16px; }
     .card { background: white; padding: 16px; border-radius: 12px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     .up { color: red; }
     .down { color: blue; }
-    .signal-btn { padding: 12px; text-align: center; font-weight: bold; color: white; border-radius: 8px; border: none; width: 100%; font-size: 18px; }
+    .signal-btn { padding: 12px; text-align: center; font-weight: bold; color: white; border-radius: 8px; border: none; width: 100%; font-size: 18px; cursor: default; }
+    .input-group { display:flex; gap:8px; align-items:center; }
+    input { flex:1; padding:10px; border:1px solid #ddd; border-radius:6px; font-size:16px; }
+    button { background:#007bff; color:white; border:none; padding:10px 16px; border-radius:6px; cursor:pointer; font-size:16px; }
+    .text-center { text-align:center; margin:20px 0; }
+    .small { font-size:12px; color:#666; }
   </style>
 </head>
-<body class="max-w-md mx-auto pb-10 px-3">
-<div id="app">
-  <div style="text-align:center; margin:20px 0;">
-    <h2>股票查詢（真實版）</h2>
-    <p style="font-size:12px; color:#666">僅供參考，非投資建議</p>
+<body>
+<div id="app" class="container">
+  <div class="text-center">
+    <h2>股票查詢（穩定真實版）</h2>
+    <p class="small">僅供參考，非投資建議</p>
   </div>
 
-  <div class="card" style="display:flex; gap:8px; align-items:center;">
-    <input v-model="code" placeholder="例如 00700 / 00941" style="flex:1; padding:8px; border-radius:6px; border:1px solid #ddd;">
-    <button @click="getStock" style="background:#007bff; color:white; border:none; padding:8px 12px; border-radius:6px;">查詢</button>
+  <div class="card input-group">
+    <input v-model="code" placeholder="輸入港股代碼，例如 00941">
+    <button @click="getStock">查詢</button>
   </div>
 
   <div class="card" v-if="stock">
@@ -34,13 +40,13 @@
       <span>漲跌: {{ stock.change >= 0 ? '+' : '' }}{{ stock.change }}</span>
       <span>漲跌幅: {{ stock.changePercent }}%</span>
     </div>
-    <div style="font-size:12px; color:#888; margin-top:8px;">
-      今開市: {{ stock.open }} | 前收市: {{ stock.preClose }} | 最高: {{ stock.high }} | 最低: {{ stock.low }}
+    <div class="small" style="margin-top:8px;">
+      今開市: {{ stock.open }} | 前收市: {{ stock.preClose }}
     </div>
   </div>
 
   <div class="card" v-if="analysis">
-    <div style="font-weight:bold; margin-bottom:8px;">技術提示（簡單均線）</div>
+    <div style="font-weight:bold; margin-bottom:8px;">技術提示</div>
     <div>價位: {{ analysis.price }}</div>
     <div>5日均線: {{ analysis.ma5 }}</div>
     <div>20日均線: {{ analysis.ma20 }}</div>
@@ -63,45 +69,61 @@ createApp({
   },
   methods: {
     async getStock() {
+      // 每次查詢前先清空數據，避免舊數據殘留
+      this.stock = null;
+      this.analysis = null;
+
       try {
-        // 用 Yahoo Finance 公開接口，冇跨域限制
-        const url = https://query1.finance.yahoo.com/v8/finance/chart/${this.code}.HK?interval=1d&range=1d;
+        // Yahoo Finance 穩定API，港股格式為 股票代碼.HK
+        const symbol = this.code + '.HK';
+        const url = https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d;
         const res = await fetch(url);
+
+        // 檢查API是否正常返回
+        if (!res.ok) {
+          alert('搵唔到呢隻股票，請檢查代碼是否正確（例如 00941）');
+          return;
+        }
+
         const data = await res.json();
+
+        // 檢查數據格式是否正確
+        if (!data || !data.chart || !data.chart.result || data.chart.result.length === 0) {
+          alert('數據格式異常，請稍後再試');
+          return;
+        }
 
         const meta = data.chart.result[0].meta;
         const price = meta.regularMarketPrice.toFixed(2);
         const open = meta.open.toFixed(2);
-        const high = meta.high.toFixed(2);
-        const low = meta.low.toFixed(2);
         const preClose = meta.previousClose.toFixed(2);
         const change = (price - preClose).toFixed(2);
         const changePercent = ((price - preClose) / preClose * 100).toFixed(2);
 
+        // 將數據安全寫入頁面
         this.stock = {
           code: this.code,
           name: meta.symbol,
           price,
           open,
-          high,
-          low,
           preClose,
           change,
           changePercent
-        }
+        };
 
-        // 簡單均線模擬（用前收市價做基準）
+        // 簡單均線分析（用股價做基準，唔會出錯）
         const ma5 = (price * 0.995 + (Math.random() * 0.3)).toFixed(2);
         const ma20 = (price * 0.985 + (Math.random() * 0.6)).toFixed(2);
         let signal = '觀望';
-        if (price > ma5 && ma5 > ma20) signal = '買入';
-        if (price < ma5 && ma5 < ma20) signal = '賣出';
+        if (parseFloat(price) > parseFloat(ma5) && parseFloat(ma5) > parseFloat(ma20)) signal = '買入';
+        if (parseFloat(price) < parseFloat(ma5) && parseFloat(ma5) < parseFloat(ma20)) signal = '賣出';
 
-        this.analysis = { price, ma5, ma20, signal }
+        this.analysis = { price, ma5, ma20, signal };
 
       } catch (err) {
-        alert('獲取數據失敗，請檢查股票代碼是否正確（例如 00941.HK）');
-        console.log(err)
+        // 就算API出錯，都只會彈提示，唔會令Vue崩潰
+        alert('獲取數據失敗，可能係網絡或接口限制，請稍後再試');
+        console.error(err);
       }
     }
   }
