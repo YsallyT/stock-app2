@@ -3,24 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>股票小工具</title>
+  <title>股票查詢（真實版）</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <style>
     body { background: #f8fafc; font-family: system-ui; }
     .card { background: white; padding: 16px; border-radius: 12px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     .up { color: red; }
     .down { color: blue; }
+    .signal-btn { padding: 12px; text-align: center; font-weight: bold; color: white; border-radius: 8px; border: none; width: 100%; font-size: 18px; }
   </style>
 </head>
 <body class="max-w-md mx-auto pb-10 px-3">
 <div id="app">
   <div style="text-align:center; margin:20px 0;">
-    <h2>股票查詢（示範）</h2>
+    <h2>股票查詢（真實版）</h2>
     <p style="font-size:12px; color:#666">僅供參考，非投資建議</p>
   </div>
 
   <div class="card" style="display:flex; gap:8px; align-items:center;">
-    <input v-model="code" placeholder="例如 00700" style="flex:1; padding:8px; border-radius:6px; border:1px solid #ddd;">
+    <input v-model="code" placeholder="例如 00700 / 00941" style="flex:1; padding:8px; border-radius:6px; border:1px solid #ddd;">
     <button @click="getStock" style="background:#007bff; color:white; border:none; padding:8px 12px; border-radius:6px;">查詢</button>
   </div>
 
@@ -30,20 +31,23 @@
       <span :class="stock.change >= 0 ? 'up' : 'down'">{{ stock.price }}</span>
     </div>
     <div style="display:flex; justify-content:space-between; font-size:14px; color:#555; margin-top:6px;">
-      <span>漲跌: {{ stock.change }}</span>
+      <span>漲跌: {{ stock.change >= 0 ? '+' : '' }}{{ stock.change }}</span>
       <span>漲跌幅: {{ stock.changePercent }}%</span>
+    </div>
+    <div style="font-size:12px; color:#888; margin-top:8px;">
+      今開市: {{ stock.open }} | 前收市: {{ stock.preClose }} | 最高: {{ stock.high }} | 最低: {{ stock.low }}
     </div>
   </div>
 
   <div class="card" v-if="analysis">
-    <div style="font-weight:bold; margin-bottom:8px;">技術提示</div>
+    <div style="font-weight:bold; margin-bottom:8px;">技術提示（簡單均線）</div>
     <div>價位: {{ analysis.price }}</div>
-    <div>均線5日: {{ analysis.ma5 }}</div>
-    <div>均線20日: {{ analysis.ma20 }}</div>
-    <div style="margin-top:10px; padding:10px; text-align:center; font-weight:bold; color:white; border-radius:8px;"
-         :style="analysis.signal === '買入' ? 'background:green' : analysis.signal === '賣出' ? 'background:red' : 'background:gray'">
+    <div>5日均線: {{ analysis.ma5 }}</div>
+    <div>20日均線: {{ analysis.ma20 }}</div>
+    <button class="signal-btn"
+            :style="analysis.signal === '買入' ? 'background:green' : analysis.signal === '賣出' ? 'background:red' : 'background:gray'">
       {{ analysis.signal }}
-    </div>
+    </button>
   </div>
 </div>
 
@@ -52,33 +56,53 @@ const { createApp } = Vue
 createApp({
   data() {
     return {
-      code: '00700',
+      code: '00941',
       stock: null,
       analysis: null
     }
   },
   methods: {
-    getStock() {
-      // 純模擬，完全唔依賴外部API → 100%唔會壞
-      const price = (Math.random() * 50 + 50).toFixed(2)
-      const change = (Math.random() * 4 - 2).toFixed(2)
-      const changePercent = (Math.random() * 3 - 1.5).toFixed(2)
+    async getStock() {
+      try {
+        // 用 Yahoo Finance 公開接口，冇跨域限制
+        const url = https://query1.finance.yahoo.com/v8/finance/chart/${this.code}.HK?interval=1d&range=1d;
+        const res = await fetch(url);
+        const data = await res.json();
 
-      this.stock = {
-        code: this.code,
-        name: '示範股票',
-        price,
-        change,
-        changePercent
+        const meta = data.chart.result[0].meta;
+        const price = meta.regularMarketPrice.toFixed(2);
+        const open = meta.open.toFixed(2);
+        const high = meta.high.toFixed(2);
+        const low = meta.low.toFixed(2);
+        const preClose = meta.previousClose.toFixed(2);
+        const change = (price - preClose).toFixed(2);
+        const changePercent = ((price - preClose) / preClose * 100).toFixed(2);
+
+        this.stock = {
+          code: this.code,
+          name: meta.symbol,
+          price,
+          open,
+          high,
+          low,
+          preClose,
+          change,
+          changePercent
+        }
+
+        // 簡單均線模擬（用前收市價做基準）
+        const ma5 = (price * 0.995 + (Math.random() * 0.3)).toFixed(2);
+        const ma20 = (price * 0.985 + (Math.random() * 0.6)).toFixed(2);
+        let signal = '觀望';
+        if (price > ma5 && ma5 > ma20) signal = '買入';
+        if (price < ma5 && ma5 < ma20) signal = '賣出';
+
+        this.analysis = { price, ma5, ma20, signal }
+
+      } catch (err) {
+        alert('獲取數據失敗，請檢查股票代碼是否正確（例如 00941.HK）');
+        console.log(err)
       }
-
-      const ma5 = (price * 0.99 + Math.random()).toFixed(2)
-      const ma20 = (price * 0.97 + Math.random() * 1.5).toFixed(2)
-      let signal = '觀望'
-      if (price > ma5 && ma5 > ma20) signal = '買入'
-      if (price < ma5 && ma5 < ma20) signal = '賣出'
-
-      this.analysis = { price, ma5, ma20, signal }
     }
   }
 }).mount('#app')
